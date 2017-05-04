@@ -134,7 +134,7 @@ void __init __ipipe_enable_pipeline(void)
 			  __ipipe_ack_apic);
 #endif
 
-#ifdef CONFIG_X86_MCE_AMD
+#if defined(CONFIG_X86_MCE_AMD) && defined(CONFIG_X86_64)
 	ipipe_request_irq(ipipe_root_domain,
 			  ipipe_apic_vector_irq(DEFERRED_ERROR_VECTOR),
 			  __ipipe_do_IRQ, smp_deferred_error_interrupt,
