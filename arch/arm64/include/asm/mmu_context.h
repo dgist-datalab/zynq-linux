@@ -210,4 +210,13 @@ switch_mm(struct mm_struct *prev, struct mm_struct *next,
 
 void verify_cpu_asid_bits(void);
 
+#ifdef CONFIG_IPIPE
+static inline void
+ipipe_switch_mm_head(struct mm_struct *prev, struct mm_struct *next,
+			   struct task_struct *tsk)
+{
+	__switch_mm(prev, next, tsk);
+}
+#endif
+
 #endif
