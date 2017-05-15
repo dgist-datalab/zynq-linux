@@ -21,6 +21,7 @@
 
 #include <linux/compiler.h>
 #include <linux/sched.h>
+#include <linux/ipipe.h>
 
 #include <asm/cacheflush.h>
 #include <asm/proc-fns.h>
@@ -29,7 +30,6 @@
 #include <asm/pgtable.h>
 #include <asm/sysreg.h>
 #include <asm/tlbflush.h>
-#include <asm/ipipe.h>
 
 static inline void contextidr_thread_switch(struct task_struct *next)
 {
