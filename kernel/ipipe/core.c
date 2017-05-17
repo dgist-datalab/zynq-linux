@@ -1474,7 +1474,9 @@ void __sched __ipipe_preempt_schedule_irq(void)
 	struct ipipe_percpu_domain_data *p;
 	unsigned long flags;
 
-	BUG_ON(!hard_irqs_disabled());
+	if (WARN_ON_ONCE(!hard_irqs_disabled()))
+		hard_local_irq_disable();
+
 	local_irq_save(flags);
 	hard_local_irq_enable();
 	preempt_schedule_irq(); /* Ok, may reschedule now. */
