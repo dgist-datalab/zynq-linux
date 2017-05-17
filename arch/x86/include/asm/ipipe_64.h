@@ -49,12 +49,4 @@ static inline unsigned long __ipipe_ffnz(unsigned long ul)
       return ul;
 }
 
-#ifdef CONFIG_PREEMPT
-#define __ipipe_check_root_resched()			\
-	(preempt_count() == 0 && need_resched() &&	\
-	 per_cpu(irq_count, ipipe_processor_id()) < 0)
-#else
-#define __ipipe_check_root_resched()	0
-#endif
-
 #endif	/* !__X86_IPIPE_64_H */
