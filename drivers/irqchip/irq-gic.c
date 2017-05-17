@@ -93,9 +93,8 @@ struct gic_chip_data {
 };
 
 #ifdef CONFIG_IPIPE
-static IPIPE_DEFINE_RAW_SPINLOCK(irq_controller_lock);
-#define pipeline_lock(__flags)		raw_spin_lock_irqsave(&irq_controller_lock, __flags)
-#define pipeline_unlock(__flags)	raw_spin_unlock_irqrestore(&irq_controller_lock, __flags)
+#define pipeline_lock(__flags)		do { (__flags) = hard_local_irq_save(); } while (0)
+#define pipeline_unlock(__flags)	hard_local_irq_restore(__flags)
 #else
 #define pipeline_lock(__flags)		do { (void)__flags; } while (0)
 #define pipeline_unlock(__flags)	do { (void)__flags; } while (0)
@@ -103,7 +102,7 @@ static IPIPE_DEFINE_RAW_SPINLOCK(irq_controller_lock);
 
 #ifdef CONFIG_BL_SWITCHER
 
-static DEFINE_RAW_SPINLOCK(cpu_map_lock);
+static IPIPE_DEFINE_RAW_SPINLOCK(cpu_map_lock);
 
 #define gic_lock_irqsave(f)		\
 	raw_spin_lock_irqsave(&cpu_map_lock, (f))
