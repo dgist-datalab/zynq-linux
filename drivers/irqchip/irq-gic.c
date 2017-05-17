@@ -264,8 +264,16 @@ static void gic_eoimode1_eoi_irq(struct irq_data *d)
 #ifdef CONFIG_IPIPE
 static void gic_hold_irq(struct irq_data *d)
 {
+	struct irq_chip *chip = irq_data_get_irq_chip(d);
+
 	gic_poke_irq(d, GIC_DIST_ENABLE_CLEAR);
-	gic_eoi_irq(d);
+
+	if (chip->irq_eoi == gic_eoimode1_eoi_irq) {
+		if (irqd_is_forwarded_to_vcpu(d))
+			gic_poke_irq(d, GIC_DIST_ACTIVE_CLEAR);
+		gic_eoimode1_eoi_irq(d);
+	} else
+		gic_eoi_irq(d);
 }
 
 static void gic_release_irq(struct irq_data *d)
