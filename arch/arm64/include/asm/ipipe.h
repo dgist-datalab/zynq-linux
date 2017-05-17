@@ -183,8 +183,6 @@ static inline void ipipe_unmute_pic(void)
 void __ipipe_early_core_setup(void);
 void __ipipe_hook_critical_ipi(struct ipipe_domain *ipd);
 void __ipipe_root_localtimer(unsigned int irq, void *cookie);
-void __ipipe_send_vnmi(void (*fn)(void *), cpumask_t cpumask, void *arg);
-void __ipipe_do_vnmi(unsigned int irq, void *cookie);
 void __ipipe_grab_ipi(unsigned svc, struct pt_regs *regs);
 void __ipipe_ipis_alloc(void);
 void __ipipe_ipis_request(void);

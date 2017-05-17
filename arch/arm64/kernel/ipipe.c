@@ -59,22 +59,6 @@ void (*__ipipe_mach_hrtimer_debug)(unsigned irq);
 
 #ifdef CONFIG_SMP
 
-struct __ipipe_vnmidata {
-	void (*fn)(void *);
-	void *arg;
-	cpumask_t cpumask;
-};
-
-static struct __ipipe_vnmislot {
-	ipipe_spinlock_t lock;
-	struct __ipipe_vnmidata *data;
-	ipipe_rwlock_t data_lock;
-} __ipipe_vnmi __cacheline_aligned_in_smp = {
-	.lock		= IPIPE_SPIN_LOCK_UNLOCKED,
-	.data		= NULL,
-	.data_lock	= IPIPE_RW_LOCK_UNLOCKED,
-};
-
 void __ipipe_early_core_setup(void)
 {
 	__ipipe_mach_init_platform();
@@ -118,22 +102,6 @@ unsigned long ipipe_test_root(void)
 }
 EXPORT_SYMBOL_GPL(ipipe_test_root);
 
-void __ipipe_do_vnmi(unsigned int irq, void *cookie)
-{
-	int cpu = ipipe_processor_id();
-	struct __ipipe_vnmidata *data;
-
-	read_lock(&__ipipe_vnmi.data_lock);
-
-	data = __ipipe_vnmi.data;
-	if (likely(data && cpumask_test_cpu(cpu, &data->cpumask))) {
-		data->fn(data->arg);
-		cpumask_clear_cpu(cpu, &data->cpumask);
-	}
-
-	read_unlock(&__ipipe_vnmi.data_lock);
-}
-
 static inline void
 hook_internal_ipi(struct ipipe_domain *ipd, int virq,
 		  void (*handler)(unsigned int irq, void *cookie))
@@ -149,7 +117,6 @@ void __ipipe_hook_critical_ipi(struct ipipe_domain *ipd)
 {
 	__ipipe_ipis_alloc();
 	hook_internal_ipi(ipd, IPIPE_CRITICAL_IPI, __ipipe_do_critical_sync);
-	hook_internal_ipi(ipd, IPIPE_SERVICE_VNMI, __ipipe_do_vnmi);
 }
 
 void ipipe_set_irq_affinity(unsigned int irq, cpumask_t cpumask)
@@ -166,44 +133,6 @@ void ipipe_set_irq_affinity(unsigned int irq, cpumask_t cpumask)
 }
 EXPORT_SYMBOL_GPL(ipipe_set_irq_affinity);
 
-void __ipipe_send_vnmi(void (*fn)(void *), cpumask_t cpumask, void *arg)
-{
-	struct __ipipe_vnmidata data;
-	unsigned long flags;
-	int cpu;
-
-	data.fn = fn;
-	data.arg = arg;
-	data.cpumask = cpumask;
-
-	while (!spin_trylock_irqsave(&__ipipe_vnmi.lock, flags)) {
-		if (hard_irqs_disabled())
-			__ipipe_do_vnmi(IPIPE_SERVICE_VNMI, NULL);
-		cpu_relax();
-	}
-
-	cpu = ipipe_processor_id();
-	cpumask_clear_cpu(cpu, &data.cpumask);
-	if (cpumask_empty(&data.cpumask)) {
-		spin_unlock_irqrestore(&__ipipe_vnmi.lock, flags);
-		return;
-	}
-
-	write_lock(&__ipipe_vnmi.data_lock);
-	__ipipe_vnmi.data = &data;
-	write_unlock(&__ipipe_vnmi.data_lock);
-
-	ipipe_send_ipi(IPIPE_SERVICE_VNMI, data.cpumask);
-	while (!cpumask_empty(&data.cpumask))
-		cpu_relax();
-
-	write_lock(&__ipipe_vnmi.data_lock);
-	__ipipe_vnmi.data = NULL;
-	write_unlock(&__ipipe_vnmi.data_lock);
-
-	spin_unlock_irqrestore(&__ipipe_vnmi.lock, flags);
-}
-EXPORT_SYMBOL_GPL(__ipipe_send_vnmi);
 #endif	/* CONFIG_SMP */
 
 #ifdef CONFIG_SMP_ON_UP

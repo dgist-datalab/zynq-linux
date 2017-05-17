@@ -36,9 +36,8 @@ extern unsigned __ipipe_first_ipi;
 #define IPIPE_CRITICAL_IPI	__ipipe_first_ipi
 #define IPIPE_HRTIMER_IPI	(IPIPE_CRITICAL_IPI + 1)
 #define IPIPE_RESCHEDULE_IPI	(IPIPE_CRITICAL_IPI + 2)
-#define IPIPE_SERVICE_VNMI	(IPIPE_CRITICAL_IPI + 3)
 
-#define IPIPE_LAST_IPI		IPIPE_SERVICE_VNMI
+#define IPIPE_LAST_IPI		IPIPE_RESCHEDULE_IPI
 
 #ifdef CONFIG_IPIPE_LEGACY
 #define hard_smp_processor_id()						\
