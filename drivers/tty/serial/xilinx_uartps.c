@@ -1256,21 +1256,22 @@ static void cdns_uart_console_write_raw(struct console *co, const char *s,
 	struct uart_port *port = &cdns_uart_port[co->index];
 	unsigned int imr, ctrl;
 
-	imr = cdns_uart_readl(CDNS_UART_IMR_OFFSET);
-	cdns_uart_writel(imr, CDNS_UART_IDR_OFFSET);
+	imr = readl(port->membase + CDNS_UART_IMR);
+	writel(imr, port->membase + CDNS_UART_IDR);
 
-	ctrl = cdns_uart_readl(CDNS_UART_CR_OFFSET);
-	cdns_uart_writel((ctrl & ~CDNS_UART_CR_TX_DIS) | CDNS_UART_CR_TX_EN,
-		CDNS_UART_CR_OFFSET);
+	ctrl = readl(port->membase + CDNS_UART_CR);
+	ctrl &= ~CDNS_UART_CR_TX_DIS;
+	ctrl |= CDNS_UART_CR_TX_EN;
+	writel(ctrl, port->membase + CDNS_UART_CR);
 
 	while (count-- > 0) {
 		if (*s == '\n')
-			cdns_uart_writel('\r', CDNS_UART_FIFO_OFFSET);
-		cdns_uart_writel(*s++, CDNS_UART_FIFO_OFFSET);
+			writel('\r', port->membase + CDNS_UART_FIFO);
+		writel(*s++, port->membase + CDNS_UART_FIFO);
 	}
 	
-	cdns_uart_writel(ctrl, CDNS_UART_CR_OFFSET);
-	cdns_uart_writel(imr, CDNS_UART_IER_OFFSET);
+	writel(ctrl, port->membase + CDNS_UART_CR);
+	writel(imr, port->membase + CDNS_UART_IER);
 }
 
 #endif
