@@ -171,7 +171,7 @@ enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
  * actually changed.
  */
 static inline void
-__switch_mm(struct mm_struct *prev, struct mm_struct *next,
+__do_switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	  struct task_struct *tsk)
 {
 	unsigned int cpu = ipipe_processor_id();
@@ -179,9 +179,6 @@ __switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	if (prev == next)
 		return;
 
-#ifdef CONFIG_IPIPE
-	*raw_cpu_ptr(&ipipe_percpu.active_mm) = next;
-#endif
 	/*
 	 * init_mm.pgd does not contain any user mappings and it is always
 	 * active for kernel addresses in TTBR1. Just set the reserved TTBR0.
@@ -192,6 +189,16 @@ __switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	}
 
 	check_and_switch_context(next, cpu);
+}
+
+static inline void
+__switch_mm(struct mm_struct *prev, struct mm_struct *next,
+	  struct task_struct *tsk)
+{
+	__do_switch_mm(prev, next, tsk);
+#ifdef CONFIG_IPIPE
+	raw_cpu_write(ipipe_percpu.active_mm, next);
+#endif
 }
 
 static inline void
@@ -215,7 +222,7 @@ static inline void
 ipipe_switch_mm_head(struct mm_struct *prev, struct mm_struct *next,
 			   struct task_struct *tsk)
 {
-	__switch_mm(prev, next, tsk);
+	__do_switch_mm(prev, next, tsk);
 }
 #endif
 
