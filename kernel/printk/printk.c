@@ -3450,6 +3450,9 @@ void dump_stack_print_info(const char *log_lvl)
 	if (dump_stack_arch_desc_str[0] != '\0')
 		printk("%sHardware name: %s\n",
 		       log_lvl, dump_stack_arch_desc_str);
+#ifdef CONFIG_IPIPE
+	printk("I-pipe domain: %s\n", ipipe_current_domain->name);
+#endif
 
 	print_worker_info(log_lvl, current);
 }
