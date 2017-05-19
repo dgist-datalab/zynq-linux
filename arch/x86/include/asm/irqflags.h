@@ -73,6 +73,8 @@ static inline int native_irqs_disabled(void)
 
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
+#define HARD_COND_ENABLE_INTERRUPTS
+#define HARD_COND_DISABLE_INTERRUPTS
 #else
 #ifndef __ASSEMBLY__
 #include <linux/types.h>
