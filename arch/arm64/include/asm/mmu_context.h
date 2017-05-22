@@ -171,8 +171,8 @@ enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
  * actually changed.
  */
 static inline void
-__do_switch_mm(struct mm_struct *prev, struct mm_struct *next,
-	  struct task_struct *tsk)
+__switch_mm(struct mm_struct *prev, struct mm_struct *next,
+	    struct task_struct *tsk)
 {
 	unsigned int cpu = ipipe_processor_id();
 
@@ -192,21 +192,14 @@ __do_switch_mm(struct mm_struct *prev, struct mm_struct *next,
 }
 
 static inline void
-__switch_mm(struct mm_struct *prev, struct mm_struct *next,
-	  struct task_struct *tsk)
-{
-	__do_switch_mm(prev, next, tsk);
-}
-
-static inline void
 switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	  struct task_struct *tsk)
 {
 	unsigned long flags;
 
-	flags = hard_local_irq_save();
+	flags = hard_cond_local_irq_save();
 	__switch_mm(prev, next, tsk);
-	hard_local_irq_restore(flags);
+	hard_cond_local_irq_restore(flags);
 }
 
 #define deactivate_mm(tsk,mm)	do { } while (0)
@@ -219,7 +212,7 @@ static inline void
 ipipe_switch_mm_head(struct mm_struct *prev, struct mm_struct *next,
 			   struct task_struct *tsk)
 {
-	__do_switch_mm(prev, next, tsk);
+	__switch_mm(prev, next, tsk);
 }
 #endif
 
