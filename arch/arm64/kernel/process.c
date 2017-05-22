@@ -90,27 +90,12 @@ static void __ipipe_halt_root(void)
 	}
 }
 
-#define FPSIMD_EN (0x3 << 20)
-static inline void disable_fpsimd(void)
-{
-	unsigned long cpacr;
-
-	__asm__ __volatile__("mrs %0, cpacr_el1": "=r"(cpacr));
-	cpacr &= ~FPSIMD_EN;
-	__asm__ __volatile__ (
-		"msr cpacr_el1, %0\n\t"
-		"isb"
-		: /* */ : "r"(cpacr));
-}
-
 #else /* !CONFIG_IPIPE */
+
 static void __ipipe_halt_root(void)
 {
 	cpu_do_idle();
 }
-
-static inline void disable_fpsimd(void)
-{ }
 
 #endif /* !CONFIG_IPIPE */
 
@@ -371,17 +356,13 @@ void uao_thread_switch(struct task_struct *next)
 /*
  * Thread switching.
  */
-static struct task_struct *__do_switch_to(struct task_struct *prev,
-					  struct task_struct *next,
-					  bool lazy_fpu)
+struct task_struct *__switch_to(struct task_struct *prev,
+				struct task_struct *next)
 {
 	struct task_struct *last;
 
-	if (lazy_fpu)
-		disable_fpsimd();
-	else
-		fpsimd_thread_switch(next);
- 	tls_thread_switch(next);
+	fpsimd_thread_switch(next);
+	tls_thread_switch(next);
 	hw_breakpoint_thread_switch(next);
 	contextidr_thread_switch(next);
 	uao_thread_switch(next);
@@ -397,20 +378,6 @@ static struct task_struct *__do_switch_to(struct task_struct *prev,
 
 	return last;
 }
-
-struct task_struct *__switch_to(struct task_struct *prev,
-				struct task_struct *next)
-{
-	return __do_switch_to(prev, next, false);
-}
-
-#ifdef CONFIG_IPIPE
-struct task_struct *ipipe_switch_to(struct task_struct *prev,
-				    struct task_struct *next)
-{
-	return __do_switch_to(prev, next, true);
-}
-#endif
 
 unsigned long get_wchan(struct task_struct *p)
 {
