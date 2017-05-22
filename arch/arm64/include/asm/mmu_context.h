@@ -196,9 +196,6 @@ __switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	  struct task_struct *tsk)
 {
 	__do_switch_mm(prev, next, tsk);
-#ifdef CONFIG_IPIPE
-	raw_cpu_write(ipipe_percpu.active_mm, next);
-#endif
 }
 
 static inline void
