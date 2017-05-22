@@ -93,16 +93,14 @@ static void __ipipe_halt_root(void)
 #define FPSIMD_EN (0x3 << 20)
 static inline void disable_fpsimd(void)
 {
-	unsigned long flags, cpacr;
+	unsigned long cpacr;
 
-	flags = hard_local_irq_save();
 	__asm__ __volatile__("mrs %0, cpacr_el1": "=r"(cpacr));
 	cpacr &= ~FPSIMD_EN;
 	__asm__ __volatile__ (
 		"msr cpacr_el1, %0\n\t"
 		"isb"
 		: /* */ : "r"(cpacr));
-	hard_local_irq_restore(flags);
 }
 
 #else /* !CONFIG_IPIPE */
