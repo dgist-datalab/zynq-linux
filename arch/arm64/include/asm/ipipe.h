@@ -97,20 +97,6 @@ extern unsigned long __ipipe_hrtimer_freq;
 extern void (*__ipipe_mach_hrtimer_debug)(unsigned irq);
 #endif /* CONFIG_IPIPE_DEBUG_INTERNAL */
 
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-
-#define ipipe_mm_switch_protect(__flags)	\
-	do {					\
-		(void)(__flags);		\
-	} while(0)
-
-#define ipipe_mm_switch_unprotect(__flags)	\
-	do {					\
-		(void)(__flags);		\
-	} while(0)
-
-#else /* !CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH */
-
 #define ipipe_mm_switch_protect(__flags)		\
 	do {						\
 		(__flags) = hard_cond_local_irq_save();	\
@@ -118,8 +104,6 @@ extern void (*__ipipe_mach_hrtimer_debug)(unsigned irq);
 
 #define ipipe_mm_switch_unprotect(__flags)	\
 	hard_cond_local_irq_restore(__flags)
-
-#endif /* !CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH */
 
 #define ipipe_read_tsc(t)	do { t = __ipipe_tsc_get(); } while(0)
 #define __ipipe_read_timebase()	__ipipe_tsc_get()
