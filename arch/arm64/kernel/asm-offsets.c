@@ -35,6 +35,7 @@
 int main(void)
 {
   DEFINE(TSK_ACTIVE_MM,		offsetof(struct task_struct, active_mm));
+  DEFINE(TSK_STACK,		offsetof(struct task_struct, stack));
   BLANK();
   DEFINE(TI_FLAGS,		offsetof(struct thread_info, flags));
 #ifdef CONFIG_IPIPE

@@ -206,6 +206,20 @@ alternative_else_nop_endif
 	.macro	irq_stack_entry
 	mov	x19, sp			// preserve the original sp
 
+#ifdef CONFIG_IPIPE
+	/*
+	 * When the pipeline is enabled, context switches over the irq
+	 * stack are allowed (for the co-kernel), and more interrupts
+	 * can be taken over sibling stack contexts. So we need a not so
+	 * subtle way of figuring out whether the irq stack was actually
+	 * exited, which cannot depend on the current task pointer.
+	 */
+	this_cpu_ptr irq_nesting, x25, x26
+	ldr	w26, [x25]
+	cmp	w26, #0
+	add	w26, w26, #1
+	str	w26, [x25]
+#else
 	/*
 	 * Compare sp with the current thread_info, if the top
 	 * ~(THREAD_SIZE - 1) bits match, we are on a task stack, and
@@ -213,6 +227,7 @@ alternative_else_nop_endif
 	 */
 	and	x25, x19, #~(THREAD_SIZE - 1)
 	cmp	x25, tsk
+#endif	
 	b.ne	9998f
 
 	this_cpu_ptr irq_stack, x25, x26
@@ -238,6 +253,12 @@ alternative_else_nop_endif
 	 */
 	.macro	irq_stack_exit
 	mov	sp, x19
+#ifdef CONFIG_IPIPE
+	this_cpu_ptr irq_nesting, x1, x0
+	ldr	w0, [x1]
+	add	w0, w0, #-1
+	str	w0, [x1]
+#endif
 	.endm
 
 /*
@@ -259,11 +280,11 @@ tsk	.req	x28		// current thread_info
 	mov	x0, sp
 	irq_stack_entry
 	blr	x1
+	irq_stack_exit
 #ifdef CONFIG_IPIPE
 	bl  __ipipe_check_root_interruptible
 	cmp w0, #1
 #endif /* CONFIG_IPIPE */
-	irq_stack_exit
 	.endm
 
 	.text
@@ -703,7 +724,21 @@ ENTRY(cpu_switch_to)
 	ldp	x29, x9, [x8], #16
 	ldr	lr, [x8]
 	mov	sp, x9
+#ifdef CONFIG_IPIPE
+	/*
+	 * Unlike the main kernel, the co-kernel may switch contexts
+	 * over the global IRQ stack, so we can't assume that the saved
+	 * %sp we just reloaded in x9 lives within the incoming task's
+	 * stack. Therefore we can't compute 'tsk' from this pointer,
+	 * but we can peek at the incoming task struct for the stack
+	 * base address, where the thread_info struct lives.
+	 */
+	mov	x10, #TSK_STACK
+	add	x10, x1, x10
+	ldr	x9, [x10]
+#else
 	and	x9, x9, #~(THREAD_SIZE - 1)
+#endif
 	msr	sp_el0, x9
 	ret
 ENDPROC(cpu_switch_to)
