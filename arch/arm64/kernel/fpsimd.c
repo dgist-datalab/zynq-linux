@@ -131,11 +131,8 @@ void do_fpsimd_exc(unsigned int esr, struct pt_regs *regs)
 	send_sig_info(SIGFPE, &info, current);
 }
 
-void fpsimd_thread_switch(struct task_struct *next)
+static void fpsimd_root_save(void)
 {
-	unsigned long flags;
-
-	flags = hard_local_irq_save();
 	/*
 	 * Save the current FPSIMD state to memory, but only if whatever is in
 	 * the registers is in fact the most recent userland FPSIMD state of
@@ -143,7 +140,10 @@ void fpsimd_thread_switch(struct task_struct *next)
 	 */
 	if (current->mm && !test_thread_flag(TIF_FOREIGN_FPSTATE))
 		fpsimd_save_state(&current->thread.fpsimd_state);
+}
 
+static void fpsimd_root_restore(struct task_struct *next)
+{
 	if (next->mm) {
 		/*
 		 * If we are switching to a task whose most recent userland
@@ -162,6 +162,67 @@ void fpsimd_thread_switch(struct task_struct *next)
 			set_ti_thread_flag(task_thread_info(next),
 					   TIF_FOREIGN_FPSTATE);
 	}
+}
+
+#ifdef CONFIG_IPIPE
+
+static DEFINE_PER_CPU(struct fpsimd_state, fpsimd_foreign_state);
+static DEFINE_PER_CPU(bool, fpsimd_kernel_neon);
+
+static void fpsimd_do_save(void)
+{
+	struct fpsimd_state *st;
+
+	if (__ipipe_root_p)
+		fpsimd_root_save();
+	else {
+		st = &current->thread.fpsimd_state;
+		if (__this_cpu_read(fpsimd_kernel_neon) ||
+		    test_thread_flag(TIF_FOREIGN_FPSTATE))
+			st = this_cpu_ptr(&fpsimd_foreign_state);
+	
+		fpsimd_save_state(st);
+	}
+}
+
+static void fpsimd_do_restore(struct task_struct *next)
+{
+	struct fpsimd_state *st;
+
+	if (__ipipe_root_p)
+		fpsimd_root_restore(next);
+	else {
+		st = &next->thread.fpsimd_state;
+		if (__this_cpu_read(fpsimd_kernel_neon) ||
+		    test_ti_thread_flag(task_thread_info(next),
+					TIF_FOREIGN_FPSTATE))
+			st = this_cpu_ptr(&fpsimd_foreign_state);
+		fpsimd_load_state(st);
+		st->cpu = raw_smp_processor_id();
+	}
+}
+
+#else  /* !CONFIG_IPIPE */
+
+static void fpsimd_do_save(void)
+{
+	fpsimd_root_save();
+}
+
+static void fpsimd_do_restore(struct task_struct *next)
+{
+	fpsimd_root_restore(next);
+}
+
+#endif  /* CONFIG_IPIPE */
+
+void fpsimd_thread_switch(struct task_struct *next)
+{
+	unsigned long flags;
+
+	flags = hard_local_irq_save();
+	fpsimd_do_save();
+	fpsimd_do_restore(next);
 	hard_local_irq_restore(flags);
 }
 
@@ -244,11 +305,14 @@ static DEFINE_PER_CPU(struct fpsimd_partial_state, softirq_fpsimdstate);
  */
 void kernel_neon_begin_partial(u32 num_regs)
 {
+	unsigned long flags;
+
 	if (in_interrupt()) {
 		struct fpsimd_partial_state *s = this_cpu_ptr(
 			in_irq() ? &hardirq_fpsimdstate : &softirq_fpsimdstate);
 
 		BUG_ON(num_regs > 32);
+		flags = hard_local_irq_save();
 		fpsimd_save_partial_state(s, roundup(num_regs, 2));
 	} else {
 		/*
@@ -258,21 +322,31 @@ void kernel_neon_begin_partial(u32 num_regs)
 		 * registers.
 		 */
 		preempt_disable();
+		flags = hard_local_irq_save();
 		if (current->mm &&
 		    !test_and_set_thread_flag(TIF_FOREIGN_FPSTATE))
 			fpsimd_save_state(&current->thread.fpsimd_state);
 		this_cpu_write(fpsimd_last_state, NULL);
 	}
+
+	this_cpu_write(fpsimd_kernel_neon, true);
+	hard_local_irq_restore(flags);
 }
 EXPORT_SYMBOL(kernel_neon_begin_partial);
 
 void kernel_neon_end(void)
 {
+	unsigned long flags;
+
 	if (in_interrupt()) {
 		struct fpsimd_partial_state *s = this_cpu_ptr(
 			in_irq() ? &hardirq_fpsimdstate : &softirq_fpsimdstate);
+		flags = hard_local_irq_save();
 		fpsimd_load_partial_state(s);
+		this_cpu_write(fpsimd_kernel_neon, false);
+		hard_local_irq_restore(flags);
 	} else {
+		this_cpu_write(fpsimd_kernel_neon, false);
 		preempt_enable();
 	}
 }
