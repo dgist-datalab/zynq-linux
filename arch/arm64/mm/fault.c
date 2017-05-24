@@ -56,6 +56,39 @@ static inline const struct fault_info *esr_to_fault_info(unsigned int esr)
 	return fault_info + (esr & 63);
 }
 
+#ifdef CONFIG_IPIPE
+
+static inline unsigned long ipipe_fault_entry(void)
+{
+	unsigned long flags;
+	int s;
+
+	flags = hard_local_irq_save();
+	s = __test_and_set_bit(IPIPE_STALL_FLAG, &__ipipe_root_status);
+	hard_local_irq_enable();
+
+	return arch_mangle_irq_bits(s, flags);
+}
+
+static inline void ipipe_fault_exit(unsigned long x)
+{
+	if (!arch_demangle_irq_bits(&x))
+		local_irq_enable();
+	else
+		hard_local_irq_restore(x);
+}
+
+#else
+
+static inline unsigned long ipipe_fault_entry(void)
+{
+	return 0;
+}
+
+static inline void ipipe_fault_exit(unsigned long x) { }
+
+#endif
+
 #ifdef CONFIG_KPROBES
 static inline int notify_page_fault(struct pt_regs *regs, unsigned int esr)
 {
@@ -227,10 +260,13 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 {
 	struct siginfo si;
 	const struct fault_info *inf;
+	unsigned long irqflags;
 
 	if (__ipipe_report_trap(IPIPE_TRAP_ACCESS, regs))
 		return;
 
+	irqflags = ipipe_fault_entry();
+	
 	if (unhandled_signal(tsk, sig) && show_unhandled_signals_ratelimited()) {
 		inf = esr_to_fault_info(esr);
 		pr_info("%s[%d]: unhandled %s (%d) at 0x%08lx, esr 0x%03x\n",
@@ -247,6 +283,8 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 	si.si_code = code;
 	si.si_addr = (void __user *)addr;
 	force_sig_info(sig, &si, tsk);
+
+	ipipe_fault_exit(irqflags);
 }
 
 static void do_bad_area(unsigned long addr, unsigned int esr, struct pt_regs *regs)
@@ -328,12 +366,15 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	int fault, sig, code;
 	unsigned long vm_flags = VM_READ | VM_WRITE;
 	unsigned int mm_flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
-
-	if (notify_page_fault(regs, esr))
-		return 0;
+	unsigned long irqflags;
 
 	if (__ipipe_report_trap(IPIPE_TRAP_ACCESS, regs))
 		return 0;
+
+	irqflags = ipipe_fault_entry();
+
+	if (notify_page_fault(regs, esr))
+		goto out;
 
 	tsk = current;
 	mm  = tsk->mm;
@@ -476,6 +517,7 @@ retry:
 no_context:
 	__do_kernel_fault(mm, addr, esr, regs);
 out:
+	ipipe_fault_exit(irqflags);
 
 	return 0;
 }
@@ -683,6 +725,7 @@ asmlinkage int __exception do_debug_exception(unsigned long addr,
 					      struct pt_regs *regs)
 {
 	const struct fault_info *inf = debug_fault_info + DBG_ESR_EVT(esr);
+	unsigned long irqflags;
 	struct siginfo info;
 	int rv;
 
@@ -699,6 +742,8 @@ asmlinkage int __exception do_debug_exception(unsigned long addr,
 		if (__ipipe_report_trap(IPIPE_TRAP_UNKNOWN, regs))
 			return 0;
 
+		irqflags = ipipe_fault_entry();
+	
 		pr_alert("Unhandled debug exception: %s (0x%08x) at 0x%016lx\n",
 			 inf->name, esr, addr);
 
@@ -708,6 +753,8 @@ asmlinkage int __exception do_debug_exception(unsigned long addr,
 		info.si_addr  = (void __user *)addr;
 		arm64_notify_die("", regs, &info, 0);
 		rv = 0;
+
+		ipipe_fault_exit(irqflags);
 	}
 
 	if (interrupts_enabled(regs))
