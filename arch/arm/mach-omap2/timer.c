@@ -631,10 +631,12 @@ static void __init __omap_sync32k_timer_init(int clkev_nr, const char *clkev_src
 						clksrc_prop);
 	else
 		omap2_sync32k_clocksource_init();
+#ifdef CONFIG_IPIPE
 	if (cpu_is_omap34xx())
 		omap3_pic_muter_register();
 	else if (cpu_is_omap44xx() || soc_is_omap54xx())
 		omap4_pic_muter_register();
+#endif
 }
 
 void __init omap_init_time(void)
