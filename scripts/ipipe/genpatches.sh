@@ -119,6 +119,7 @@ BEGIN {
 
     driver_arch["tty/serial/mpc52xx_uart.c"]="powerpc"
     driver_arch["gpio/gpio-mpc8xxx.c"]="powerpc"
+    driver_arch["soc/fsl/qe/qe_ic.c"]="powerpc"
 
     driver_arch["clocksource/i8253.c"]="x86"
     driver_arch["clocksource/Makefile"]="x86"
