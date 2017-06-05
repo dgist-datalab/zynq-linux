@@ -329,7 +329,9 @@ void kernel_neon_begin_partial(u32 num_regs)
 		this_cpu_write(fpsimd_last_state, NULL);
 	}
 
+#ifdef CONFIG_IPIPE
 	this_cpu_write(fpsimd_kernel_neon, true);
+#endif
 	hard_local_irq_restore(flags);
 }
 EXPORT_SYMBOL(kernel_neon_begin_partial);
@@ -343,10 +345,14 @@ void kernel_neon_end(void)
 			in_irq() ? &hardirq_fpsimdstate : &softirq_fpsimdstate);
 		flags = hard_local_irq_save();
 		fpsimd_load_partial_state(s);
+#ifdef CONFIG_IPIPE
 		this_cpu_write(fpsimd_kernel_neon, false);
+#endif
 		hard_local_irq_restore(flags);
 	} else {
+#ifdef CONFIG_IPIPE
 		this_cpu_write(fpsimd_kernel_neon, false);
+#endif
 		preempt_enable();
 	}
 }
