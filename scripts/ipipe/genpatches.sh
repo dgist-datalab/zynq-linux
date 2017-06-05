@@ -66,7 +66,6 @@ BEGIN {
     driver_arch["clocksource/arm_global_timer.c"]="arm"
     driver_arch["clocksource/pxa_timer.c"]="arm"
     driver_arch["clocksource/timer-atmel-pit.c"]="arm"
-    driver_arch["dma/edma.c"]="arm"
     driver_arch["gpio/gpio-davinci.c"]="arm"
     driver_arch["gpio/gpio-mxc.c"]="arm"
     driver_arch["gpio/gpio-mxs.c"]="arm"
@@ -103,7 +102,6 @@ BEGIN {
     driver_arch["tty/serial/xilinx_uartps.c"]="arm"
     driver_arch["clk/imx/clk-imx51-imx53.c"]="arm"
     driver_arch["clocksource/timer-imx-gpt.c"]="arm"
-    driver_arch["clocksource/timer-sp804.c"]="arm"
     driver_arch["irqchip/irq-sa11x0.c"]="arm"
     driver_arch["media/platform/vsp1/vsp1_video.c"]="arm"
     driver_arch["soc/dove/pmu.c"]="arm"
@@ -111,9 +109,9 @@ BEGIN {
     driver_arch["irqchip/irq-gic.c"]="arm arm64"
     driver_arch["irqchip/irq-gic-v3.c"]="arm arm64"
     driver_arch["clocksource/arm_arch_timer.c"]="arm arm64"
-
-    driver_arch["tty/serial/amba-pl011.c"]="arm64"
-    driver_arch["gpio/gpio-pl061.c"]="arm64"
+    driver_arch["clocksource/timer-sp804.c"]="arm arm64"
+    driver_arch["tty/serial/amba-pl011.c"]="arm arm64"
+    driver_arch["gpio/gpio-pl061.c"]="arm arm64"
 
     driver_arch["tty/serial/bfin_uart.c"]="blackfin"
 
