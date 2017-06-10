@@ -52,9 +52,6 @@ struct hpet_dev {
 	int				cpu;
 	unsigned int			irq;
 	unsigned int			flags;
-#ifdef CONFIG_IPIPE
-	struct ipipe_timer		itimer;
-#endif /* CONFIG_IPIPE */
 	char				name[10];
 };
 
@@ -139,6 +136,10 @@ int is_hpet_enabled(void)
 	return is_hpet_capable() && hpet_legacy_int_enabled;
 }
 EXPORT_SYMBOL_GPL(is_hpet_enabled);
+
+#ifdef CONFIG_IPIPE
+static DEFINE_PER_CPU(struct ipipe_timer, hpet_itimer);
+#endif
 
 static void _hpet_print_config(const char *function, int line)
 {
@@ -289,6 +290,10 @@ static void hpet_legacy_clockevent_register(void)
 	 * Start hpet with the boot cpu mask and make it
 	 * global after the IO_APIC has been initialized.
 	 */
+#if defined(CONFIG_IPIPE) && !defined(CONFIG_SMP)
+	hpet_clockevent.ipipe_timer = this_cpu_ptr(&hpet_itimer);
+	hpet_clockevent.ipipe_timer->irq = hpet_clockevent.irq;
+#endif
 	hpet_clockevent.cpumask = cpumask_of(smp_processor_id());
 	clockevents_config_and_register(&hpet_clockevent, hpet_freq,
 					HPET_MIN_PROG_DELTA, 0x7FFFFFFF);
@@ -430,12 +435,6 @@ static int hpet_legacy_next_event(unsigned long delta,
 	return hpet_next_event(delta, evt, 0);
 }
 
-#ifdef CONFIG_IPIPE
-static struct ipipe_timer hpet_itimer = {
-	.irq = 0,
-};
-#endif /* CONFIG_IPIPE */
-
 /*
  * The hpet clock event device
  */
@@ -450,9 +449,6 @@ static struct clock_event_device hpet_clockevent = {
 	.set_next_event		= hpet_legacy_next_event,
 	.irq			= 0,
 	.rating			= 50,
-#ifdef CONFIG_IPIPE
-	.ipipe_timer    = &hpet_itimer,
-#endif /* CONFIG_IPIPE */
 };
 
 /*
@@ -594,6 +590,9 @@ static void init_one_hpet_msi_clockevent(struct hpet_dev *hdev, int cpu)
 	evt->tick_resume = hpet_msi_resume;
 	evt->set_next_event = hpet_msi_next_event;
 	evt->cpumask = cpumask_of(hdev->cpu);
+#ifdef CONFIG_IPIPE
+	evt->ipipe_timer = &per_cpu(hpet_itimer, cpu);
+#endif
 
 	clockevents_config_and_register(evt, hpet_freq, HPET_MIN_PROG_DELTA,
 					0x7FFFFFFF);
@@ -656,21 +655,24 @@ static void hpet_msi_capability_lookup(unsigned int start_timer)
 		hdev->flags |= HPET_DEV_FSB_CAP;
 		hdev->flags |= HPET_DEV_VALID;
 		num_timers_used++;
-		if (num_timers_used == num_possible_cpus()) {
-#ifdef CONFIG_IPIPE
-			/*
-			 * Only register ipipe_timers if there is one
-			 * for each cpu
-			 */
-			for (i = 0; i < num_timers_used; i++) {
-				hdev = &hpet_devs[i];
-				hdev->evt.ipipe_timer = &hdev->itimer;
-				hdev->itimer.irq = hdev->irq;
-			}
-#endif /* CONFIG_IPIPE */
+		if (num_timers_used == num_possible_cpus())
 			break;
+	}
+
+#ifdef CONFIG_IPIPE
+	/*
+	 * Only register ipipe_timers if there is one for each cpu
+	 */
+	if (num_timers_used == num_possible_cpus()) {
+		for (i = start_timer; i < num_timers - RESERVE_TIMERS; i++) {
+			struct hpet_dev *hdev = &hpet_devs[i];
+			if (hdev->flags & HPET_DEV_VALID) {
+				hdev->evt.ipipe_timer = &per_cpu(hpet_itimer, hdev->cpu);
+				hdev->evt.ipipe_timer->irq = hdev->irq;
+			}
 		}
 	}
+#endif /* CONFIG_IPIPE */
 
 	printk(KERN_INFO "HPET: %d timers in total, %d timers will be used for per-cpu timer\n",
 		num_timers, num_timers_used);
