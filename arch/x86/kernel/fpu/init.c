@@ -321,14 +321,14 @@ static void __init fpu__init_system_ctx_switch(void)
 
 	WARN_ON_FPU(current->thread.fpu.fpstate_active);
 
-	if (IS_ENABLED(CONFIG_IPIPE))
-		eagerfpu = DISABLE;
-
 	if (boot_cpu_has(X86_FEATURE_XSAVEOPT) && eagerfpu != DISABLE)
 		eagerfpu = ENABLE;
 
 	if (xfeatures_mask & XFEATURE_MASK_EAGER)
 		eagerfpu = ENABLE;
+
+	if (IS_ENABLED(CONFIG_IPIPE))
+		eagerfpu = DISABLE;
 
 	if (eagerfpu == ENABLE)
 		setup_force_cpu_cap(X86_FEATURE_EAGER_FPU);
