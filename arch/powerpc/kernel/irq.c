@@ -543,12 +543,11 @@ void __do_irq(struct pt_regs *regs)
 	___do_irq(irq, regs);
 }
 
+#ifndef CONFIG_IPIPE
+
 void do_IRQ(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
-#ifdef CONFIG_IPIPE
-	__do_irq(regs);
-#else /* !CONFIG_IPIPE */
 	struct thread_info *curtp, *irqtp, *sirqtp;
 
 	/* Switch to the irq stack to handle this */
@@ -579,10 +578,11 @@ void do_IRQ(struct pt_regs *regs)
 	/* Copy back updates to the thread_info */
 	if (irqtp->flags)
 		set_bits(irqtp->flags, &curtp->flags);
-#endif /* !CONFIG_IPIPE */
 
 	set_irq_regs(old_regs);
 }
+
+#endif /* !CONFIG_IPIPE */
 
 void __init init_IRQ(void)
 {
