@@ -1981,6 +1981,7 @@ static struct irq_chip ioapic_chip __read_mostly = {
 	.irq_hold		= hold_ioapic_irq,
 	.irq_release		= release_ioapic_irq,
 #endif
+	.irq_retrigger		= irq_chip_retrigger_hierarchy,
 	.flags			= IRQCHIP_SKIP_SET_WAKE,
 };
 
@@ -1999,6 +2000,7 @@ static struct irq_chip ioapic_ir_chip __read_mostly = {
 	.irq_hold		= hold_ioapic_irq,
 	.irq_release		= release_ioapic_irq,
 #endif
+	.irq_retrigger		= irq_chip_retrigger_hierarchy,
 	.flags			= IRQCHIP_SKIP_SET_WAKE,
 };
 

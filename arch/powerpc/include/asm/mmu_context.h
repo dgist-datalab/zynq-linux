@@ -176,6 +176,17 @@ static inline void __switch_mm(struct mm_struct *prev, struct mm_struct *next,
 #endif /* !CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH */
 }
 
+static inline void switch_mm_irqs_off(struct mm_struct *prev,
+				      struct mm_struct *next,
+				      struct task_struct *tsk)
+{
+	unsigned long flags;
+
+	ipipe_mm_switch_protect(flags);
+	__switch_mm(prev, next, tsk);
+	ipipe_mm_switch_unprotect(flags);
+}
+
 #ifdef CONFIG_IPIPE
 /*
  * ipipe_switch_mm_head() is reserved to the head domain for switching
@@ -185,11 +196,7 @@ static inline
 void ipipe_switch_mm_head(struct mm_struct *prev, struct mm_struct *next,
 			  struct task_struct *tsk)
 {
-	unsigned long flags;
-
-	flags = hard_local_irq_save();
 	__do_switch_mm(prev, next, tsk, false);
-	hard_local_irq_restore(flags);
 }
 
 #endif /* CONFIG_IPIPE */
@@ -197,12 +204,18 @@ void ipipe_switch_mm_head(struct mm_struct *prev, struct mm_struct *next,
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			     struct task_struct *tsk)
 {
+#ifndef CONFIG_IPIPE
 	unsigned long flags;
 
-	ipipe_mm_switch_protect(flags);
-	__switch_mm(prev, next, tsk);
-	ipipe_mm_switch_unprotect(flags);
+	local_irq_save(flags);
+#endif
+	switch_mm_irqs_off(prev, next, tsk);
+#ifndef CONFIG_IPIPE
+	local_irq_restore(flags);
+#endif
 }
+#define switch_mm_irqs_off switch_mm_irqs_off
+
 
 #define deactivate_mm(tsk,mm)	do { } while (0)
 
@@ -212,15 +225,7 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
  */
 static inline void activate_mm(struct mm_struct *prev, struct mm_struct *next)
 {
-#ifndef CONFIG_IPIPE
-	unsigned long flags;
-
-	local_irq_save(flags);
-#endif
 	switch_mm(prev, next, current);
-#ifndef CONFIG_IPIPE
-	local_irq_restore(flags);
-#endif
 }
 
 /* We don't currently use enter_lazy_tlb() for anything */
