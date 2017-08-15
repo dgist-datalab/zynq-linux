@@ -1954,6 +1954,16 @@ static void hold_ioapic_irq(struct irq_data *irq_data)
 	ioapic_ack_level(irq_data);
 }
 
+static void hold_ioapic_ir_irq(struct irq_data *irq_data)
+{
+	struct mp_chip_data *data = irq_data->chip_data;
+
+	raw_spin_lock(&ioapic_lock);
+	__mask_ioapic(data);
+	raw_spin_unlock(&ioapic_lock);
+	ioapic_ir_ack_level(irq_data);
+}
+
 static void release_ioapic_irq(struct irq_data *irq_data)
 {
 	struct mp_chip_data *data = irq_data->chip_data;
@@ -1997,7 +2007,7 @@ static struct irq_chip ioapic_ir_chip __read_mostly = {
 #ifdef CONFIG_SMP
 	.irq_move		= move_xxapic_irq,
 #endif
-	.irq_hold		= hold_ioapic_irq,
+	.irq_hold		= hold_ioapic_ir_irq,
 	.irq_release		= release_ioapic_irq,
 #endif
 	.irq_retrigger		= irq_chip_retrigger_hierarchy,
