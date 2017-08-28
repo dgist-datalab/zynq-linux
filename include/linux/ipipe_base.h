@@ -47,6 +47,7 @@ void ipipe_restore_root(unsigned long x);
 #include <asm/ipipe_base.h>
 #include <linux/compiler.h>
 #include <linux/linkage.h>
+#include <stdarg.h>
 
 #ifndef IPIPE_NR_ROOT_IRQS
 #define IPIPE_NR_ROOT_IRQS	NR_IRQS
@@ -169,6 +170,7 @@ static inline void __ipipe_sync_stage(void)
 #define __ipipe_run_irqtail(irq) do { } while(0)
 #endif
 
+int __ipipe_log_printk(const char *fmt, va_list args);
 void __ipipe_flush_printk(unsigned int irq, void *cookie);
 
 #define __ipipe_get_cpu(flags)	({ (flags) = hard_preempt_disable(); ipipe_processor_id(); })
