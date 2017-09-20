@@ -503,10 +503,12 @@ static void zynq_gpio_hold_irq(struct irq_data *irq_data)
 
 	device_pin_num = irq_data->hwirq;
 	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num, gpio);
+	raw_spin_lock(&zynq_gpio_lock);
 	writel_relaxed(BIT(bank_pin_num),
 		       gpio->base_addr + ZYNQ_GPIO_INTDIS_OFFSET(bank_num));
 	writel_relaxed(BIT(bank_pin_num),
 		       gpio->base_addr + ZYNQ_GPIO_INTSTS_OFFSET(bank_num));
+	raw_spin_unlock(&zynq_gpio_lock);
 }
 
 static void zynq_gpio_release_irq(struct irq_data *irq_data)
@@ -570,7 +572,7 @@ static void zynq_gpio_handle_bank_irq(struct zynq_gpio *gpio,
 		unsigned int gpio_irq;
 
 		gpio_irq = irq_find_mapping(irqdomain, offset + bank_offset);
-		generic_handle_irq(gpio_irq);
+		ipipe_handle_demuxed_irq(gpio_irq);
 	}
 }
 
