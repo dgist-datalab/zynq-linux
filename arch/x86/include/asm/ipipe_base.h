@@ -74,10 +74,10 @@ static inline unsigned __ipipe_get_irq_vector(int irq)
 	unsigned int __ipipe_get_ioapic_irq_vector(int irq);
 	return __ipipe_get_ioapic_irq_vector(irq);
 #elif defined(CONFIG_X86_LOCAL_APIC)
-	return irq >= IPIPE_FIRST_APIC_IRQ && irq < IPIPE_NR_XIRQS ?
-		ipipe_apic_irq_vector(irq) : irq + IRQ0_VECTOR;
+	return irq >= IPIPE_FIRST_APIC_IRQ ?
+		ipipe_apic_irq_vector(irq) : ISA_IRQ_VECTOR(irq);
 #else
-	return irq + IRQ0_VECTOR;
+	return ISA_IRQ_VECTOR(irq);
 #endif
 }
 
