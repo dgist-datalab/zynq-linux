@@ -421,9 +421,9 @@ void vmalloc_sync_all(void)
  *
  *   Handle a fault on the vmalloc area
  */
-static inline int vmalloc_sync_one(pgd_t *pgd, unsigned long address)
+static noinline int vmalloc_fault(unsigned long address)
 {
-	pgd_t *pgd_ref;
+	pgd_t *pgd, *pgd_ref;
 	pud_t *pud, *pud_ref;
 	pmd_t *pmd, *pmd_ref;
 	pte_t *pte, *pte_ref;
@@ -439,6 +439,7 @@ static inline int vmalloc_sync_one(pgd_t *pgd, unsigned long address)
 	 * happen within a race in page table update. In the later
 	 * case just flush:
 	 */
+	pgd = (pgd_t *)__va(read_cr3()) + pgd_index(address);
 	pgd_ref = pgd_offset_k(address);
 	if (pgd_none(*pgd_ref))
 		return -1;
@@ -492,12 +493,6 @@ static inline int vmalloc_sync_one(pgd_t *pgd, unsigned long address)
 		BUG();
 
 	return 0;
-}
-
-static noinline int vmalloc_fault(unsigned long address)
-{
-	pgd_t *pgd = (pgd_t *)__va(read_cr3()) + pgd_index(address);
-	return vmalloc_sync_one(pgd, address);
 }
 NOKPROBE_SYMBOL(vmalloc_fault);
 
@@ -1480,6 +1475,7 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 NOKPROBE_SYMBOL(do_page_fault);
 
 #ifdef CONFIG_IPIPE
+
 void __ipipe_pin_mapping_globally(unsigned long start, unsigned long end)
 {
 #ifdef CONFIG_X86_32
@@ -1498,23 +1494,28 @@ void __ipipe_pin_mapping_globally(unsigned long start, unsigned long end)
 	} while (addr = next, addr != end);
 #else
 	unsigned long next, addr = start;
-	int ret = 0;
+	pgd_t *pgd, *pgd_ref;
+	struct page *page;
+
+	if (!(start >= VMALLOC_START && start < VMALLOC_END))
+		return;
 
 	do {
-		struct page *page;
-
 		next = pgd_addr_end(addr, end);
+		pgd_ref = pgd_offset_k(addr);
+		if (pgd_none(*pgd_ref))
+			continue;
 		spin_lock(&pgd_lock);
 		list_for_each_entry(page, &pgd_list, lru) {
-			pgd_t *pgd;
-			pgd = (pgd_t *)page_address(page) + pgd_index(addr);
-			ret = vmalloc_sync_one(pgd, addr);
-			if (ret)
-				break;
+			pgd = page_address(page) + pgd_index(addr);
+			if (pgd_none(*pgd))
+				set_pgd(pgd, *pgd_ref);
 		}
 		spin_unlock(&pgd_lock);
 		addr = next;
-	} while (!ret && addr != end);
+	} while (addr != end);
+
+	arch_flush_lazy_mmu_mode();
 #endif
 }
 #endif /* CONFIG_IPIPE */
