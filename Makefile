@@ -422,7 +422,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -std=gnu89
 
 # Additional optimizations
-KBUILD_CFLAGS	+= -pipe -fno-pic -mcpu=cortex-a53
+KBUILD_CFLAGS	+= -pipe -fno-pic -mcpu=cortex-a53 -fno-store-merging
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_AFLAGS_KERNEL :=
