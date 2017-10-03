@@ -139,6 +139,13 @@ match($0, /^diff --git a\/arch\/([^ \t\/]*)/) {
     next
 }
 
+match($0, /^diff --git a\/drivers\/base/) {
+    set_current_arch("noarch")
+    is_multiarch=0
+    print $0 >> current_file
+    next
+}
+
 match($0, /^diff --git a\/drivers\/([^ \t]*)/) {
     file=substr($0, RSTART, RLENGTH)
     sub(/^diff --git a\/drivers\//, "", file)
