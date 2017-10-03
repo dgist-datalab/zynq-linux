@@ -99,8 +99,26 @@ static inline void __do_switch_mm(struct mm_struct *prev, struct mm_struct *next
 				  struct task_struct *tsk, bool irq_sync_p)
 {
 	/* Mark this context has been used on the new CPU */
-	if (!cpumask_test_cpu(raw_smp_processor_id(), mm_cpumask(next)))
+	if (!cpumask_test_cpu(raw_smp_processor_id(), mm_cpumask(next))) {
 		cpumask_set_cpu(raw_smp_processor_id(), mm_cpumask(next));
+
+		/*
+		 * This full barrier orders the store to the cpumask above vs
+		 * a subsequent operation which allows this CPU to begin loading
+		 * translations for next.
+		 *
+		 * When using the radix MMU that operation is the load of the
+		 * MMU context id, which is then moved to SPRN_PID.
+		 *
+		 * For the hash MMU it is either the first load from slb_cache
+		 * in switch_slb(), and/or the store of paca->mm_ctx_id in
+		 * copy_mm_to_paca().
+		 *
+		 * On the read side the barrier is in pte_xchg(), which orders
+		 * the store to the PTE vs the load of mm_cpumask.
+		 */
+		smp_mb();
+	}
 
 	/* 32-bit keeps track of the current PGDIR in the thread struct */
 #ifdef CONFIG_PPC32
