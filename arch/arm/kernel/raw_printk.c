@@ -18,9 +18,8 @@ static void raw_console_write(struct console *co,
 
 static struct console raw_console = {
 	.name		= "rawcon",
-	.write		= raw_console_write,
 	.write_raw	= raw_console_write,
-	.flags		= CON_PRINTBUFFER | CON_RAW,
+	.flags		= CON_PRINTBUFFER | CON_RAW | CON_ENABLED,
 	.index		= -1,
 };
 
