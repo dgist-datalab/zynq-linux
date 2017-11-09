@@ -352,6 +352,14 @@ int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr, unsigned long *flags
 skip_kgdb:
 #endif /* CONFIG_KGDB */
 
+	/*
+	 * ftrace may poke int3 into the kernel code to install
+	 * tracepoints. Trap them early, let the regular handler see
+	 * them.
+	 */
+	if (unlikely(!user_mode(regs) && trapnr == X86_TRAP_BP))
+		return 0;
+	
 	if (unlikely(__ipipe_notify_trap(trapnr, regs)))
 		return 1;
 
