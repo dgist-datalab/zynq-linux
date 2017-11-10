@@ -31,7 +31,6 @@
 #include <linux/clockchips.h>
 #include <linux/kprobes.h>
 #include <linux/mm.h>
-#include <linux/kgdb.h>
 #include <linux/ipipe_tickdev.h>
 #include <asm/asm-offsets.h>
 #include <asm/unistd.h>
@@ -310,11 +309,12 @@ void __ipipe_halt_root(int use_mwait)
 }
 EXPORT_SYMBOL_GPL(__ipipe_halt_root);
 
-int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr, unsigned long *flags)
+int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr)
 {
-	bool hard_irqs_off = hard_irqs_disabled();
+	bool entry_irqs_off = hard_irqs_disabled(),
+		trap_irqs_off = raw_irqs_disabled_flags(regs->flags);
 	struct ipipe_domain *ipd;
-	unsigned long cr2;
+	unsigned long flags, cr2;
 
 #ifdef CONFIG_KGDB
 	/* Fixup kgdb-own faults immediately. */
@@ -330,35 +330,25 @@ int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr, unsigned long *flags
 	if (trapnr == X86_TRAP_PF)
 		cr2 = native_read_cr2();
 
-#ifdef CONFIG_KGDB
 	/*
-	 * Catch int1 and int3 for kgdb here. They may trigger over
-	 * inconsistent states even when the root domain is active.
+	 * KGDB and ftrace may poke int3/debug ops into the kernel
+	 * code. Trap those exceptions early, do conditional fixups to
+	 * the interrupt state depending on the current domain, let
+	 * the regular handler see them.
 	 */
-	if (kgdb_io_module_registered &&
-	    (trapnr == X86_TRAP_DB || trapnr == X86_TRAP_BP)) {
-		unsigned int condition = 0;
-
-		if (trapnr == X86_TRAP_DB) {
-			if (atomic_read(&kgdb_cpu_doing_single_step) == -1 &&
-			    test_thread_flag(TIF_SINGLESTEP))
-				goto skip_kgdb;
-			get_debugreg(condition, 6);
-		}
-		if (!user_mode(regs) &&
-		    !kgdb_handle_exception(trapnr, SIGTRAP, condition, regs))
-			return 1;
+	if (unlikely(!user_mode(regs) &&
+		     (trapnr == X86_TRAP_DB || trapnr == X86_TRAP_BP))) {
+		/*
+		 * Skip interrupt state fixup from the head domain,
+		 * but do call the regular handler which is assumed to
+		 * run fine within such context.
+		 */
+		if (!ipipe_root_p)
+			return -1;
+		local_save_flags(flags);
+		__ipipe_fixup_if(raw_irqs_disabled_flags(flags), regs);
+		goto out_root;
 	}
-skip_kgdb:
-#endif /* CONFIG_KGDB */
-
-	/*
-	 * ftrace may poke int3 into the kernel code to install
-	 * tracepoints. Trap them early, let the regular handler see
-	 * them.
-	 */
-	if (unlikely(!user_mode(regs) && trapnr == X86_TRAP_BP))
-		return 0;
 	
 	if (unlikely(__ipipe_notify_trap(trapnr, regs)))
 		return 1;
@@ -370,20 +360,20 @@ skip_kgdb:
 		 * domain state. The fault handler may evaluate it. So fix this
 		 * up with the current state.
 		 */
-		local_save_flags(*flags);
-		__ipipe_fixup_if(raw_irqs_disabled_flags(*flags), regs);
+		local_save_flags(flags);
+		__ipipe_fixup_if(raw_irqs_disabled_flags(flags), regs);
 
 		/*
 		 * Sync Linux interrupt state with hardware state on
 		 * entry.
 		 */
-		if (hard_irqs_off)
+		if (entry_irqs_off)
 			local_irq_disable();
 	} else {
 		/*
 		 * Use the flags of the faulting context when restoring later.
 		 */
-		*flags = regs->flags;
+		flags = regs->flags;
 
 		/*
 		 * Detect unhandled faults over the head domain,
@@ -395,7 +385,7 @@ skip_kgdb:
 		__ipipe_set_current_domain(ipipe_root_domain);
 
 		/* Sync Linux interrupt state with hardware state on entry. */
-		if (hard_irqs_off)
+		if (entry_irqs_off)
 			local_irq_disable();
 
 		ipipe_trace_panic_freeze();
@@ -423,6 +413,14 @@ skip_kgdb:
 	if (trapnr == X86_TRAP_PF)
 		write_cr2(cr2);
 
+out_root:
+	if (raw_irqs_disabled_flags(flags))
+		ipipe_restore_root_nosync(raw_irqs_disabled_flags(flags));
+	else
+		ipipe_restore_root(raw_irqs_disabled_flags(flags));
+
+	__ipipe_fixup_if(trap_irqs_off, regs);
+	
 	return 0;
 }
 

@@ -56,8 +56,7 @@ void __ipipe_hook_critical_ipi(struct ipipe_domain *ipd);
 
 void __ipipe_enable_pipeline(void);
 
-int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr,
-			  unsigned long *flags);
+int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr);
 
 static inline void __ipipe_fixup_if(int s, struct pt_regs *regs)
 {
@@ -72,17 +71,12 @@ static inline void __ipipe_fixup_if(int s, struct pt_regs *regs)
 		regs->flags |= X86_EFLAGS_IF;
 }
 
-#define IPIPE_DO_TRAP(__handler, __trapnr, __regs, __args...)			\
-	({									\
-		unsigned long __flags, __regs_flags = __regs->flags;		\
-		int __ret = __ipipe_trap_prologue(__regs, __trapnr, &__flags);	\
-		if (__ret <= 0) {						\
-			__handler(__regs, ##__args);				\
-			ipipe_restore_root(raw_irqs_disabled_flags(__flags));	\
-			__ipipe_fixup_if(raw_irqs_disabled_flags(__regs_flags),	\
-					 regs);					\
-		}								\
-		__ret > 0;							\
+#define IPIPE_DO_TRAP(__handler, __trapnr, __regs, __args...)		\
+	({								\
+		int __ret = __ipipe_trap_prologue(__regs, __trapnr);	\
+		if (__ret <= 0)						\
+			__handler(__regs, ##__args);			\
+		__ret > 0;						\
 	})
 
 #define __ipipe_root_tick_p(regs)	((regs)->flags & X86_EFLAGS_IF)
