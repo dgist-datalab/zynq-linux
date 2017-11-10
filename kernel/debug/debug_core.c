@@ -169,21 +169,19 @@ int __weak kgdb_arch_set_breakpoint(struct kgdb_bkpt *bpt)
 {
 	int err;
 
-	err = ipipe_probe_kernel_read(bpt->saved_instr, (char *)bpt->bpt_addr,
-				      BREAK_INSTR_SIZE);
+	err = probe_kernel_read(bpt->saved_instr, (char *)bpt->bpt_addr,
+				BREAK_INSTR_SIZE);
 	if (err)
 		return err;
-	err = ipipe_probe_kernel_write((char *)bpt->bpt_addr,
-				       arch_kgdb_ops.gdb_bpt_instr,
-				       BREAK_INSTR_SIZE);
+	err = probe_kernel_write((char *)bpt->bpt_addr,
+				 arch_kgdb_ops.gdb_bpt_instr, BREAK_INSTR_SIZE);
 	return err;
 }
 
 int __weak kgdb_arch_remove_breakpoint(struct kgdb_bkpt *bpt)
 {
-	return ipipe_probe_kernel_write((char *)bpt->bpt_addr,
-					(char *)bpt->saved_instr,
-					BREAK_INSTR_SIZE);
+	return probe_kernel_write((char *)bpt->bpt_addr,
+				  (char *)bpt->saved_instr, BREAK_INSTR_SIZE);
 }
 
 int __weak kgdb_validate_break_address(unsigned long addr)
