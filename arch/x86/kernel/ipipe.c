@@ -312,23 +312,10 @@ EXPORT_SYMBOL_GPL(__ipipe_halt_root);
 int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr)
 {
 	bool entry_irqs_off = hard_irqs_disabled(),
-		trap_irqs_off = raw_irqs_disabled_flags(regs->flags);
+		trap_irqs_off = raw_irqs_disabled_flags(regs->flags),
+		root_entry = ipipe_root_p;
 	struct ipipe_domain *ipd;
 	unsigned long flags, cr2;
-
-#ifdef CONFIG_KGDB
-	/* Fixup kgdb-own faults immediately. */
-	if (__ipipe_probe_access) {
-		const struct exception_table_entry *fixup =
-			search_exception_tables(regs->ip);
-		BUG_ON(!fixup);
-		regs->ip = (unsigned long)&fixup->fixup + fixup->fixup;
-		return 1;
-	}
-#endif /* CONFIG_KGDB */
-
-	if (trapnr == X86_TRAP_PF)
-		cr2 = native_read_cr2();
 
 	/*
 	 * KGDB and ftrace may poke int3/debug ops into the kernel
@@ -343,17 +330,34 @@ int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr)
 		 * but do call the regular handler which is assumed to
 		 * run fine within such context.
 		 */
-		if (!ipipe_root_p)
+		if (!root_entry)
 			return -1;
 		local_save_flags(flags);
 		__ipipe_fixup_if(raw_irqs_disabled_flags(flags), regs);
 		goto out_root;
 	}
-	
+
+	/*
+	 * Now that we have filtered out all debug traps which might
+	 * happen anywhere in kernel code in theory, detect attempts
+	 * to probe kernel memory (i.e. calls to probe_kernel_{read,
+	 * write}()). If that happened over the head domain, do the
+	 * fixup immediately then return right after upon success. If
+	 * that fails, the kernel is likely to crash but let's follow
+	 * the standard recovery procedure in that case anyway.
+	 */
+	if (unlikely(!root_entry && faulthandler_disabled())) {
+		if (fixup_exception(regs, trapnr))
+			return 1;
+	}
+
+	if (trapnr == X86_TRAP_PF)
+		cr2 = native_read_cr2();
+
 	if (unlikely(__ipipe_notify_trap(trapnr, regs)))
 		return 1;
 
-	if (likely(ipipe_root_p)) {
+	if (likely(root_entry)) {
 		/*
 		 * If no head domain is installed, or in case we faulted in
 		 * the iret path of x86-32, regs->flags does not match the root
