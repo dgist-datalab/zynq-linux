@@ -2215,12 +2215,10 @@ static void __dev_printk(const char *level, const struct device *dev,
 {
 #ifdef CONFIG_IPIPE
 	/*
-	 * Console logging only over the head stage, or if hard locked
-	 * over the root stage.
+	 * Console logging only if hard locked, or over the head
+	 * stage.
 	 */
-	if (__ipipe_current_domain != ipipe_root_domain ||
-	    (ipipe_head_domain != ipipe_root_domain &&
-	     hard_irqs_disabled())) {
+	if (hard_irqs_disabled() || !ipipe_root_p) {
 		__ipipe_log_printk(vaf->fmt, *vaf->va);
 		return;
 	}
