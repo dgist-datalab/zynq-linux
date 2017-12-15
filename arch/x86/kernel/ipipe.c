@@ -312,7 +312,8 @@ EXPORT_SYMBOL_GPL(__ipipe_halt_root);
 int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr)
 {
 	bool entry_irqs_off = hard_irqs_disabled(),
-		trap_irqs_off = raw_irqs_disabled_flags(regs->flags);
+		trap_irqs_off = raw_irqs_disabled_flags(regs->flags),
+		root_entry = ipipe_root_p;
 	struct ipipe_domain *ipd;
 	unsigned long flags, cr2;
 
@@ -329,7 +330,7 @@ int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr)
 		 * but do call the regular handler which is assumed to
 		 * run fine within such context.
 		 */
-		if (!ipipe_root_p)
+		if (!root_entry)
 			return -1;
 		local_save_flags(flags);
 		__ipipe_fixup_if(raw_irqs_disabled_flags(flags), regs);
@@ -345,7 +346,7 @@ int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr)
 	 * that fails, the kernel is likely to crash but let's follow
 	 * the standard recovery procedure in that case anyway.
 	 */
-	if (unlikely(!ipipe_root_p && faulthandler_disabled())) {
+	if (unlikely(!root_entry && faulthandler_disabled())) {
 		if (fixup_exception(regs, trapnr))
 			return 1;
 	}
@@ -356,7 +357,7 @@ int __ipipe_trap_prologue(struct pt_regs *regs, int trapnr)
 	if (unlikely(__ipipe_notify_trap(trapnr, regs)))
 		return 1;
 
-	if (likely(ipipe_root_p)) {
+	if (likely(root_entry)) {
 		/*
 		 * If no head domain is installed, or in case we faulted in
 		 * the iret path of x86-32, regs->flags does not match the root
