@@ -446,7 +446,7 @@ endif
 	dh_installdeb -plinux-libc-dev
 	$(lockme) dh_gencontrol -plinux-libc-dev -- $(libc_dev_version)
 	dh_md5sums -plinux-libc-dev
-	dh_builddeb -plinux-libc-dev
+	dh_builddeb -plinux-libc-dev -- -Zgzip -Snone
 endif
 
 binary-%: pkgimg = $(bin_pkg_name)-$*
@@ -471,7 +471,7 @@ binary-%: install-%
 	dh_shlibdeps -p$(pkgimg) $(shlibdeps_opts)
 	$(lockme) dh_gencontrol -p$(pkgimg) -- -Vlinux:rprovides='$(rprovides)'
 	dh_md5sums -p$(pkgimg)
-	dh_builddeb -p$(pkgimg)
+	dh_builddeb -p$(pkgimg) -- -Zgzip -Snone
 
 ifeq ($(do_extras_package),true)
 	if [ -f $(DEBIAN)/control.d/$(target_flavour).inclusion-list ] ; then \
@@ -483,7 +483,7 @@ ifeq ($(do_extras_package),true)
 		dh_shlibdeps -p$(pkgimg_ex) $(shlibdeps_opts); \
 		$(lockme) dh_gencontrol -p$(pkgimg_ex); \
 		dh_md5sums -p$(pkgimg_ex); \
-		dh_builddeb -p$(pkgimg_ex); \
+		dh_builddeb -p$(pkgimg_ex) -- -Zgzip -Snone; \
 	fi
 endif
 
@@ -495,7 +495,7 @@ endif
 	dh_installdeb -p$(pkghdr)
 	$(lockme) dh_gencontrol -p$(pkghdr)
 	dh_md5sums -p$(pkghdr)
-	dh_builddeb -p$(pkghdr)
+	dh_builddeb -p$(pkghdr) -- -Zgzip -Snone
 
 ifneq ($(skipsub),true)
 	@set -e; for sub in $($(*)_sub); do		\
@@ -508,7 +508,7 @@ ifneq ($(skipsub),true)
 		dh_installdeb -p$$pkg;			\
 		$(lockme) dh_gencontrol -p$$pkg;			\
 		dh_md5sums -p$$pkg;			\
-		dh_builddeb -p$$pkg;			\
+		dh_builddeb -p$$pkg -- -Zgzip -Snone;			\
 	done
 endif
 
@@ -520,7 +520,7 @@ ifneq ($(skipdbg),true)
 	dh_installdeb -p$(dbgpkg)
 	$(lockme) dh_gencontrol -p$(dbgpkg)
 	dh_md5sums -p$(dbgpkg)
-	dh_builddeb -p$(dbgpkg)
+	dh_builddeb -p$(dbgpkg) -- -Zgzip -Snone
 
 	# Hokay...here's where we do a little twiddling...
 	# Renaming the debug package prevents it from getting into
@@ -553,7 +553,7 @@ ifeq ($(do_linux_tools),true)
 	dh_installdeb -p$(pkgtools)
 	$(lockme) dh_gencontrol -p$(pkgtools)
 	dh_md5sums -p$(pkgtools)
-	dh_builddeb -p$(pkgtools)
+	dh_builddeb -p$(pkgtools) -- -Zgzip -Snone
 endif
 ifeq ($(do_cloud_tools),true)
 	dh_installchangelogs -p$(pkgcloud)
@@ -564,7 +564,7 @@ ifeq ($(do_cloud_tools),true)
 	dh_installdeb -p$(pkgcloud)
 	$(lockme) dh_gencontrol -p$(pkgcloud)
 	dh_md5sums -p$(pkgcloud)
-	dh_builddeb -p$(pkgcloud)
+	dh_builddeb -p$(pkgcloud) -- -Zgzip -Snone
 endif
 
 ifneq ($(full_build),false)
@@ -691,7 +691,7 @@ ifeq ($(do_linux_tools),true)
 	dh_installdeb -p$(toolspkg)
 	$(lockme) dh_gencontrol -p$(toolspkg)
 	dh_md5sums -p$(toolspkg)
-	dh_builddeb -p$(toolspkg)
+	dh_builddeb -p$(toolspkg) -- -Zgzip -Snone
 endif
 ifeq ($(do_cloud_tools),true)
 	dh_strip -p$(cloudpkg)
@@ -703,7 +703,7 @@ ifeq ($(do_cloud_tools),true)
 	dh_installdeb -p$(cloudpkg)
 	$(lockme) dh_gencontrol -p$(cloudpkg)
 	dh_md5sums -p$(cloudpkg)
-	dh_builddeb -p$(cloudpkg)
+	dh_builddeb -p$(cloudpkg) -- -Zgzip -Snone
 endif
 
 binary-debs: signed = $(CURDIR)/debian/$(bin_pkg_name)-signed

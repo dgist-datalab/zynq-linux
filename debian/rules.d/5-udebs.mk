@@ -43,7 +43,7 @@ do-binary-udebs: debian/control
 	for i in $$dilist; do \
 	  dh_fixperms -p$$i; \
 	  $(lockme) dh_gencontrol -p$$i; \
-	  dh_builddeb -p$$i; \
+	  dh_builddeb -p$$i -- -Zgzip -Snone; \
 	done
 	
 	# Generate the meta-udeb dependancy lists.
@@ -73,5 +73,5 @@ do-binary-udebs: debian/control
 	' <$(CURDIR)/debian/control
 	@while read i; do \
 		$(lockme) dh_gencontrol -p$$i; \
-		dh_builddeb -p$$i; \
+		dh_builddeb -p$$i -- -Zgzip -Snone; \
 	done <$(builddir)/udeb-meta-packages

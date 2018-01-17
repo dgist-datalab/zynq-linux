@@ -151,7 +151,7 @@ binary-headers: install-headers
 	dh_installdeb -p$(indep_hdrpkg)
 	$(lockme) dh_gencontrol -p$(indep_hdrpkg)
 	dh_md5sums -p$(indep_hdrpkg)
-	dh_builddeb -p$(indep_hdrpkg)
+	dh_builddeb -p$(indep_hdrpkg) -- -Zgzip -Snone
 
 binary-indep: cloudpkg = $(cloud_common_pkg_name)
 binary-indep: install-indep
@@ -174,4 +174,4 @@ endif
 	dh_installdeb -i
 	$(lockme) dh_gencontrol -i
 	dh_md5sums -i
-	dh_builddeb -i
+	dh_builddeb -i -- -Zgzip -Snone
