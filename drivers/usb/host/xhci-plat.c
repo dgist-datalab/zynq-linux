@@ -183,7 +183,7 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
-		return -ENODEV;
+		return irq;
 
 	/* Try to set 64-bit DMA first */
 	if (WARN_ON(!pdev->dev.dma_mask))
@@ -256,6 +256,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (device_property_read_bool(&pdev->dev, "usb3-lpm-capable"))
 		xhci->quirks |= XHCI_LPM_SUPPORT;
 
+	if (device_property_read_bool(&pdev->dev, "quirk-broken-port-ped"))
+		xhci->quirks |= XHCI_BROKEN_PORT_PED;
+
 	if (device_property_read_bool(&pdev->dev, "xhci-stream-quirk"))
 		xhci->quirks |= XHCI_STREAM_QUIRK;
 
@@ -315,6 +318,8 @@ static int xhci_plat_remove(struct platform_device *dev)
 	struct clk *clk = xhci->clk;
 
 	usb_otg_set_host(&dev->dev, hcd, 0);
+
+	xhci->xhc_state |= XHCI_STATE_REMOVING;
 
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_phy_shutdown(hcd->usb_phy);
