@@ -2526,14 +2526,20 @@ static int axienet_change_mtu(struct net_device *ndev, int new_mtu)
  */
 static void axienet_poll_controller(struct net_device *ndev)
 {
+	int i;
 	struct axienet_local *lp = netdev_priv(ndev);
+	struct axienet_dma_q *q;
 
-	disable_irq(lp->tx_irq);
-	disable_irq(lp->rx_irq);
-	axienet_rx_irq(lp->tx_irq, ndev);
-	axienet_tx_irq(lp->rx_irq, ndev);
-	enable_irq(lp->tx_irq);
-	enable_irq(lp->rx_irq);
+	for_each_dma_queue(lp, i) {
+		q = lp->dq[i];
+
+		disable_irq(q->tx_irq);
+		disable_irq(q->rx_irq);
+		axienet_rx_irq(q->tx_irq, ndev);
+		axienet_tx_irq(q->rx_irq, ndev);
+		enable_irq(q->tx_irq);
+		enable_irq(q->rx_irq);
+	}
 }
 #endif
 
