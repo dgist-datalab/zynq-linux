@@ -14,6 +14,7 @@
 #include <linux/gpio/driver.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/ipipe.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -150,6 +151,8 @@ struct zynq_platform_data {
 
 static struct irq_chip zynq_gpio_level_irqchip;
 static struct irq_chip zynq_gpio_edge_irqchip;
+
+static IPIPE_DEFINE_RAW_SPINLOCK(zynq_gpio_lock);
 
 /**
  * zynq_gpio_is_zynq - test if HW is zynq or zynqmp
@@ -302,6 +305,7 @@ static int zynq_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
 	u32 reg;
 	unsigned int bank_num, bank_pin_num;
 	struct zynq_gpio *gpio = gpiochip_get_data(chip);
+	unsigned long flags;
 
 	zynq_gpio_get_bank_pin(pin, &bank_num, &bank_pin_num, gpio);
 
@@ -313,10 +317,12 @@ static int zynq_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
 		(bank_pin_num == 7 || bank_pin_num == 8))
 		return -EINVAL;
 
+	raw_spin_lock_irqsave(&zynq_gpio_lock, flags);
 	/* clear the bit in direction mode reg to set the pin as input */
 	reg = readl_relaxed(gpio->base_addr + ZYNQ_GPIO_DIRM_OFFSET(bank_num));
 	reg &= ~BIT(bank_pin_num);
 	writel_relaxed(reg, gpio->base_addr + ZYNQ_GPIO_DIRM_OFFSET(bank_num));
+	raw_spin_unlock_irqrestore(&zynq_gpio_lock, flags);
 
 	return 0;
 }
@@ -339,9 +345,11 @@ static int zynq_gpio_dir_out(struct gpio_chip *chip, unsigned int pin,
 	u32 reg;
 	unsigned int bank_num, bank_pin_num;
 	struct zynq_gpio *gpio = gpiochip_get_data(chip);
+	unsigned long flags;
 
 	zynq_gpio_get_bank_pin(pin, &bank_num, &bank_pin_num, gpio);
 
+	raw_spin_lock_irqsave(&zynq_gpio_lock, flags);
 	/* set the GPIO pin as output */
 	reg = readl_relaxed(gpio->base_addr + ZYNQ_GPIO_DIRM_OFFSET(bank_num));
 	reg |= BIT(bank_pin_num);
@@ -351,6 +359,7 @@ static int zynq_gpio_dir_out(struct gpio_chip *chip, unsigned int pin,
 	reg = readl_relaxed(gpio->base_addr + ZYNQ_GPIO_OUTEN_OFFSET(bank_num));
 	reg |= BIT(bank_pin_num);
 	writel_relaxed(reg, gpio->base_addr + ZYNQ_GPIO_OUTEN_OFFSET(bank_num));
+	raw_spin_unlock_irqrestore(&zynq_gpio_lock, flags);
 
 	/* set the state of the pin */
 	zynq_gpio_set_value(chip, pin, state);
@@ -370,11 +379,15 @@ static void zynq_gpio_irq_mask(struct irq_data *irq_data)
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 	struct zynq_gpio *gpio =
 		gpiochip_get_data(irq_data_get_irq_chip_data(irq_data));
+	unsigned long flags;
 
 	device_pin_num = irq_data->hwirq;
 	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num, gpio);
+	raw_spin_lock_irqsave(&zynq_gpio_lock, flags);
+	ipipe_lock_irq(irq_data->irq);
 	writel_relaxed(BIT(bank_pin_num),
 		       gpio->base_addr + ZYNQ_GPIO_INTDIS_OFFSET(bank_num));
+	raw_spin_unlock_irqrestore(&zynq_gpio_lock, flags);
 }
 
 /**
@@ -391,11 +404,15 @@ static void zynq_gpio_irq_unmask(struct irq_data *irq_data)
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 	struct zynq_gpio *gpio =
 		gpiochip_get_data(irq_data_get_irq_chip_data(irq_data));
+	unsigned long flags;
 
 	device_pin_num = irq_data->hwirq;
 	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num, gpio);
+	raw_spin_lock_irqsave(&zynq_gpio_lock, flags);
 	writel_relaxed(BIT(bank_pin_num),
 		       gpio->base_addr + ZYNQ_GPIO_INTEN_OFFSET(bank_num));
+	ipipe_unlock_irq(irq_data->irq);
+	raw_spin_unlock_irqrestore(&zynq_gpio_lock, flags);
 }
 
 /**
@@ -532,11 +549,47 @@ static int zynq_gpio_set_wake(struct irq_data *data, unsigned int on)
 	return 0;
 }
 
+#ifdef CONFIG_IPIPE
+
+static void zynq_gpio_hold_irq(struct irq_data *irq_data)
+{
+	unsigned int device_pin_num, bank_num, bank_pin_num;
+	struct zynq_gpio *gpio =
+		gpiochip_get_data(irq_data_get_irq_chip_data(irq_data));
+
+	device_pin_num = irq_data->hwirq;
+	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num, gpio);
+	raw_spin_lock(&zynq_gpio_lock);
+	writel_relaxed(BIT(bank_pin_num),
+		       gpio->base_addr + ZYNQ_GPIO_INTDIS_OFFSET(bank_num));
+	writel_relaxed(BIT(bank_pin_num),
+		       gpio->base_addr + ZYNQ_GPIO_INTSTS_OFFSET(bank_num));
+	raw_spin_unlock(&zynq_gpio_lock);
+}
+
+static void zynq_gpio_release_irq(struct irq_data *irq_data)
+{
+	unsigned int device_pin_num, bank_num, bank_pin_num;
+	struct zynq_gpio *gpio =
+		gpiochip_get_data(irq_data_get_irq_chip_data(irq_data));
+
+	device_pin_num = irq_data->hwirq;
+	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num, gpio);
+	writel_relaxed(BIT(bank_pin_num),
+		       gpio->base_addr + ZYNQ_GPIO_INTEN_OFFSET(bank_num));
+}
+
+#endif /* CONFIG_IPIPE */
+
 /* irq chip descriptor */
 static struct irq_chip zynq_gpio_level_irqchip = {
-	.name		= DRIVER_NAME,
+	.name		= DRIVER_NAME "-level",
 	.irq_enable	= zynq_gpio_irq_enable,
 	.irq_eoi	= zynq_gpio_irq_ack,
+#ifdef CONFIG_IPIPE
+	.irq_hold	= zynq_gpio_hold_irq,
+	.irq_release	= zynq_gpio_release_irq,
+#endif
 	.irq_mask	= zynq_gpio_irq_mask,
 	.irq_unmask	= zynq_gpio_irq_unmask,
 	.irq_set_type	= zynq_gpio_set_irq_type,
@@ -546,9 +599,13 @@ static struct irq_chip zynq_gpio_level_irqchip = {
 };
 
 static struct irq_chip zynq_gpio_edge_irqchip = {
-	.name		= DRIVER_NAME,
+	.name		= DRIVER_NAME "-edge",
 	.irq_enable	= zynq_gpio_irq_enable,
+#ifdef CONFIG_IPIPE
+	.irq_mask_ack	= zynq_gpio_hold_irq,
+#else	
 	.irq_ack	= zynq_gpio_irq_ack,
+#endif	
 	.irq_mask	= zynq_gpio_irq_mask,
 	.irq_unmask	= zynq_gpio_irq_unmask,
 	.irq_set_type	= zynq_gpio_set_irq_type,
@@ -571,7 +628,7 @@ static void zynq_gpio_handle_bank_irq(struct zynq_gpio *gpio,
 		unsigned int gpio_irq;
 
 		gpio_irq = irq_find_mapping(irqdomain, offset + bank_offset);
-		generic_handle_irq(gpio_irq);
+		ipipe_handle_demuxed_irq(gpio_irq);
 	}
 }
 
