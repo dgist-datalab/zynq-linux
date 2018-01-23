@@ -25,6 +25,7 @@ void use_mm(struct mm_struct *mm)
 	unsigned long flags;
 
 	task_lock(tsk);
+	preempt_disable_rt();
 	active_mm = tsk->active_mm;
  	ipipe_mm_switch_protect(flags);
 	if (active_mm != mm) {
@@ -38,6 +39,7 @@ void use_mm(struct mm_struct *mm)
 	switch_mm(active_mm, mm, tsk);
 #endif
  	ipipe_mm_switch_unprotect(flags);
+	preempt_enable_rt();
 	task_unlock(tsk);
 #ifdef finish_arch_post_lock_switch
 	finish_arch_post_lock_switch();
