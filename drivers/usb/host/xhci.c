@@ -869,6 +869,41 @@ static void xhci_disable_port_wake_on_bits(struct xhci_hcd *xhci)
 	spin_unlock_irqrestore(&xhci->lock, flags);
 }
 
+static bool xhci_pending_portevent(struct xhci_hcd *xhci)
+{
+	__le32 __iomem		**port_array;
+	int			port_index;
+	u32			status;
+	u32			portsc;
+
+	status = readl(&xhci->op_regs->status);
+	if (status & STS_EINT)
+		return true;
+	/*
+	 * Checking STS_EINT is not enough as there is a lag between a change
+	 * bit being set and the Port Status Change Event that it generated
+	 * being written to the Event Ring. See note in xhci 1.1 section 4.19.2.
+	 */
+
+	port_index = xhci->num_usb2_ports;
+	port_array = xhci->usb2_ports;
+	while (port_index--) {
+		portsc = readl(port_array[port_index]);
+		if (portsc & PORT_CHANGE_MASK ||
+		    (portsc & PORT_PLS_MASK) == XDEV_RESUME)
+			return true;
+	}
+	port_index = xhci->num_usb3_ports;
+	port_array = xhci->usb3_ports;
+	while (port_index--) {
+		portsc = readl(port_array[port_index]);
+		if (portsc & PORT_CHANGE_MASK ||
+		    (portsc & PORT_PLS_MASK) == XDEV_RESUME)
+			return true;
+	}
+	return false;
+}
+
 /*
  * Stop HC (not bus-specific)
  *
@@ -899,6 +934,9 @@ int xhci_suspend(struct xhci_hcd *xhci, bool do_wakeup)
 	del_timer_sync(&hcd->rh_timer);
 	clear_bit(HCD_FLAG_POLL_RH, &xhci->shared_hcd->flags);
 	del_timer_sync(&xhci->shared_hcd->rh_timer);
+
+	if (xhci->quirks & XHCI_SUSPEND_DELAY)
+		usleep_range(1000, 1500);
 
 	spin_lock_irq(&xhci->lock);
 	clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
@@ -965,7 +1003,7 @@ EXPORT_SYMBOL_GPL(xhci_suspend);
  */
 int xhci_resume(struct xhci_hcd *xhci, bool hibernated)
 {
-	u32			command, temp = 0, status;
+	u32			command, temp = 0;
 	struct usb_hcd		*hcd = xhci_to_hcd(xhci);
 	struct usb_hcd		*secondary_hcd;
 	int			retval = 0;
@@ -1087,8 +1125,7 @@ int xhci_resume(struct xhci_hcd *xhci, bool hibernated)
  done:
 	if (retval == 0) {
 		/* Resume root hubs only when have pending events. */
-		status = readl(&xhci->op_regs->status);
-		if (status & STS_EINT) {
+		if (xhci_pending_portevent(xhci)) {
 			usb_hcd_resume_root_hub(xhci->shared_hcd);
 			usb_hcd_resume_root_hub(hcd);
 		}
@@ -3546,11 +3583,6 @@ static void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	struct xhci_virt_device *virt_dev;
 	struct xhci_slot_ctx *slot_ctx;
 	int i, ret;
-	struct xhci_command *command;
-
-	command = xhci_alloc_command(xhci, false, false, GFP_KERNEL);
-	if (!command)
-		return;
 
 #ifndef CONFIG_USB_DEFAULT_PERSIST
 	/*
@@ -3566,10 +3598,8 @@ static void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	/* If the host is halted due to driver unload, we still need to free the
 	 * device.
 	 */
-	if (ret <= 0 && ret != -ENODEV) {
-		kfree(command);
+	if (ret <= 0 && ret != -ENODEV)
 		return;
-	}
 
 	virt_dev = xhci->devs[udev->slot_id];
 	slot_ctx = xhci_get_slot_ctx(xhci, virt_dev->out_ctx);
@@ -3581,26 +3611,22 @@ static void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 		del_timer_sync(&virt_dev->eps[i].stop_cmd_timer);
 	}
 
-	xhci_disable_slot(xhci, command, udev->slot_id);
+	virt_dev->udev = NULL;
+	xhci_disable_slot(xhci, udev->slot_id);
 	/*
 	 * Event command completion handler will free any data structures
 	 * associated with the slot.  XXX Can free sleep?
 	 */
 }
 
-int xhci_disable_slot(struct xhci_hcd *xhci, struct xhci_command *command,
-			u32 slot_id)
+int xhci_disable_slot(struct xhci_hcd *xhci, u32 slot_id)
 {
+	struct xhci_command *command;
 	unsigned long flags;
 	u32 state;
 	int ret = 0;
-	struct xhci_virt_device *virt_dev;
 
-	virt_dev = xhci->devs[slot_id];
-	if (!virt_dev)
-		return -EINVAL;
-	if (!command)
-		command = xhci_alloc_command(xhci, false, false, GFP_KERNEL);
+	command = xhci_alloc_command(xhci, false, false, GFP_KERNEL);
 	if (!command)
 		return -ENOMEM;
 
@@ -3609,17 +3635,16 @@ int xhci_disable_slot(struct xhci_hcd *xhci, struct xhci_command *command,
 	state = readl(&xhci->op_regs->status);
 	if (state == 0xffffffff || (xhci->xhc_state & XHCI_STATE_DYING) ||
 			(xhci->xhc_state & XHCI_STATE_HALTED)) {
-		xhci_free_virt_device(xhci, slot_id);
 		spin_unlock_irqrestore(&xhci->lock, flags);
 		kfree(command);
-		return ret;
+		return -ENODEV;
 	}
 
 	ret = xhci_queue_slot_control(xhci, command, TRB_DISABLE_SLOT,
 				slot_id);
 	if (ret) {
 		spin_unlock_irqrestore(&xhci->lock, flags);
-		xhci_dbg(xhci, "FIXME: allocate a command ring segment\n");
+		kfree(command);
 		return ret;
 	}
 	xhci_ring_cmd_db(xhci);
@@ -3694,6 +3719,8 @@ int xhci_alloc_dev(struct usb_hcd *hcd, struct usb_device *udev)
 		return 0;
 	}
 
+	xhci_free_command(xhci, command);
+
 	if ((xhci->quirks & XHCI_EP_LIMIT_QUIRK)) {
 		spin_lock_irqsave(&xhci->lock, flags);
 		ret = xhci_reserve_host_control_ep_resources(xhci);
@@ -3729,18 +3756,12 @@ int xhci_alloc_dev(struct usb_hcd *hcd, struct usb_device *udev)
 		pm_runtime_get_noresume(hcd->self.controller);
 #endif
 
-
-	xhci_free_command(xhci, command);
 	/* Is this a LS or FS device under a HS hub? */
 	/* Hub or peripherial? */
 	return 1;
 
 disable_slot:
-	/* Disable slot, if we can do it without mem alloc */
-	kfree(command->completion);
-	command->completion = NULL;
-	command->status = 0;
-	return xhci_disable_slot(xhci, command, udev->slot_id);
+	return xhci_disable_slot(xhci, udev->slot_id);
 }
 
 /*
@@ -4804,6 +4825,7 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 	 * quirks
 	 */
 	struct device		*dev = hcd->self.sysdev;
+	unsigned int		minor_rev;
 	int			retval;
 
 	/* Accept arbitrarily long scatter-gather lists */
@@ -4831,12 +4853,19 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 		 */
 		hcd->has_tt = 1;
 	} else {
-		/* Some 3.1 hosts return sbrn 0x30, can't rely on sbrn alone */
-		if (xhci->sbrn == 0x31 || xhci->usb3_rhub.min_rev >= 1) {
-			xhci_info(xhci, "Host supports USB 3.1 Enhanced SuperSpeed\n");
+		/*
+		 * Some 3.1 hosts return sbrn 0x30, use xhci supported protocol
+		 * minor revision instead of sbrn
+		 */
+		minor_rev = xhci->usb3_rhub.min_rev;
+		if (minor_rev) {
 			hcd->speed = HCD_USB31;
 			hcd->self.root_hub->speed = USB_SPEED_SUPER_PLUS;
 		}
+		xhci_info(xhci, "Host supports USB 3.%x %s SuperSpeed\n",
+			  minor_rev,
+			  minor_rev ? "Enhanced" : "");
+
 		/* xHCI private pointer was set in xhci_pci_probe for the second
 		 * registered roothub.
 		 */
