@@ -20,6 +20,7 @@
 #include <asm/desc.h>
 #include <asm/cmdline.h>
 #include <asm/vsyscall.h>
+#include <asm/sections.h>
 
 int kaiser_enabled __read_mostly = 1;
 EXPORT_SYMBOL(kaiser_enabled);	/* for inlined TLB flush functions */
@@ -344,7 +345,7 @@ void __init kaiser_init(void)
 	if (vsyscall_enabled())
 		kaiser_add_user_map_early((void *)VSYSCALL_ADDR,
 					  PAGE_SIZE,
-					   __PAGE_KERNEL_VSYSCALL);
+					  vsyscall_pgprot);
 
 	for_each_possible_cpu(cpu) {
 		void *percpu_vaddr = __per_cpu_user_mapped_start +
